@@ -34,7 +34,7 @@ pub trait ParametricSymbol: Clone + PartialEq + Debug
     fn new_from_iter<I>(symbol: Self::Sym, iter: I) -> Option<Self>
         where I: Iterator<Item = Self::Param>
     {
-        match Self::new_from_result_iter::<_, ()>(symbol, iter.map(|i| Ok(i))) {
+        match Self::new_from_result_iter::<_, ()>(symbol, iter.map(Ok)) {
             Some(Ok(res)) => Some(res),
             Some(Err(())) => panic!(),
             None => None,
@@ -80,8 +80,8 @@ impl<Sym: Alphabet, Param: Clone + Debug + PartialEq> ParametricSymbol for PSym<
             }
         }
         Some(Ok(PSym {
-            symbol: symbol,
-            params: params,
+            symbol,
+            params,
         }))
     }
 }
@@ -126,12 +126,12 @@ impl<Sym: Alphabet, Param: Clone + Debug + PartialEq> ParametricSymbol for PSym1
             Some(Err(e)) => return Some(Err(e)),
             None => return None,
         };
-        if let Some(_) = iter.next() {
+        if iter.next().is_some() {
             return None;
         }
 
         Some(Ok(PSym1 {
-            symbol: symbol,
+            symbol,
             params: [p1],
         }))
     }
@@ -182,12 +182,12 @@ impl<Sym: Alphabet, Param: Clone + Debug + PartialEq> ParametricSymbol for PSym2
             Some(Err(e)) => return Some(Err(e)),
             None => return None,
         };
-        if let Some(_) = iter.next() {
+        if iter.next().is_some() {
             return None;
         }
 
         Some(Ok(PSym2 {
-            symbol: symbol,
+            symbol,
             params: [p1, p2],
         }))
     }
@@ -228,7 +228,7 @@ impl<Sym, PS, PS2, C> PRule<Sym, PS, PS2, C>
             symbol: sym,
             condition: cond,
             production: prod,
-            arity: arity,
+            arity,
             _marker: PhantomData,
         }
     }
@@ -305,7 +305,7 @@ fn test_rule_apply() {
 
     let rule = PRule::<_, PSym<_, NumExpr<u32>>, PSym<_, u32>, _>::new('A',
                                                                        Cond::False,
-                                                                       vec![expr_s.clone()],
+                                                                       vec![expr_s],
                                                                        1);
     assert_eq!(Err(RuleError::ConditionFalse), rule.apply(&param_s));
 }
@@ -317,7 +317,7 @@ pub trait ParametricSystem {
 
     /// Apply in parallel the first matching rule to each symbol in the string.
     /// Returns the total number of rule applications.
-    fn develop_next(&self, axiom: &Vec<<Self::Rule as ParametricRule>::OutSym>) -> (Vec<<Self::Rule as ParametricRule>::OutSym>, usize) {
+    fn develop_next(&self, axiom: &[<Self::Rule as ParametricRule>::OutSym]) -> (Vec<<Self::Rule as ParametricRule>::OutSym>, usize) {
         let mut expanded = Vec::new();
         let mut rule_applications = 0;
 
@@ -352,7 +352,7 @@ pub trait ParametricSystem {
             }
             current = next;
         }
-        return (current, max_iterations);
+        (current, max_iterations)
     }
 }
 
@@ -367,7 +367,7 @@ pub fn apply_first_rule<R>(rules: &[R],
             return Some(successor);
         }
     }
-    return None;
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -378,8 +378,10 @@ pub struct PSystem<R>
 }
 
 
+
 impl<R> PSystem<R> where R: ParametricRule
 {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> PSystem<R> {
         PSystem { rules: vec![] }
     }
@@ -419,6 +421,7 @@ impl<A, Rule> PDualMapSystem<A, Rule>
           <Rule as ParametricRule>::InSym: ParametricSymbol<Sym = A>,
           <Rule as ParametricRule>::OutSym: ParametricSymbol<Sym = A>
 {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> PDualMapSystem<A, Rule> {
         PDualMapSystem { rules: BTreeMap::new() }
     }
@@ -430,15 +433,16 @@ impl<A, Rule> PDualMapSystem<A, Rule>
         };
         self.rules
             .entry(rule_id)
-            .or_insert(vec![])
+            .or_insert_with(Vec::new)
             .push(rule);
-        return true;
+
+        true
     }
 
     fn random_rule_id<R: Rng>(&self, rng: &mut R) -> Option<&<A as DualAlphabet>::NonTerminal> {
         let len = self.rules.len();
         if len > 0 {
-            let nth = rng.gen_range(0, len);
+            let nth = rng.gen_range(0..len);
             self.rules.iter().map(|(k, _)| k).nth(nth)
         } else {
             None
@@ -453,7 +457,7 @@ impl<A, Rule> PDualMapSystem<A, Rule>
             if let Some(local_rules) = self.rules.get(rule_id) {
                 let len = local_rules.len();
                 if len > 0 {
-                    let idx = rng.gen_range(0, len);
+                    let idx = rng.gen_range(0..len);
                     callback(rng, Some(&local_rules[idx]));
                     return;
                 }
@@ -467,12 +471,13 @@ impl<A, Rule> PDualMapSystem<A, Rule>
         where R: Rng,
               F: FnMut(&mut R, Option<&mut Rule>)
     {
-        let opt_rule_id = self.random_rule_id(rng).map(|id| id.clone());
+
+        let opt_rule_id = self.random_rule_id(rng).cloned();
         if let Some(rule_id) = opt_rule_id {
             if let Some(local_rules) = self.rules.get_mut(&rule_id) {
                 let len = local_rules.len();
                 if len > 0 {
-                    let idx = rng.gen_range(0, len);
+                    let idx = rng.gen_range(0..len);
                     callback(rng, Some(&mut local_rules[idx]));
                     return;
                 }

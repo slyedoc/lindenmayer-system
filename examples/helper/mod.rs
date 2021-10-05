@@ -15,8 +15,10 @@ pub type Rule = PRule<char, SymExpr, SymR, Cond<Expr<Real>>>;
 pub type System = PSystem<Rule>;
 
 pub fn num_iterations() -> usize {
+    #[allow(clippy::or_fun_call)]
     usize::from_str(&env::args().nth(1).unwrap_or("0".to_string())).unwrap()
 }
+
 
 pub fn draw(
     symstr: &[SymR],
